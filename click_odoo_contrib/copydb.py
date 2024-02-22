@@ -58,6 +58,32 @@ def _copy_filestore(source, dest, copy_mode="default"):
             except Exception as e:
                 msg = "Error syncing filestore to: {}, {}".format(dest, e)
                 raise click.ClickException(msg)
+        elif copy_mode == "gsutil":
+            if not os.path.exists(filestore_dest):
+                os.makedirs(filestore_dest)
+            if os.listdir(filestore_dest):
+                raise click.ClickException(
+                    "Error syncing filestore to: {}, destination is not empty".format(
+                        dest
+                    )
+                )
+            try:
+                if not filestore_source.endswith("/"):
+                    filestore_source += "/"
+                if not filestore_dest.endswith("/"):
+                    filestore_dest += "/"
+                cmd = [
+                    "gsutil",
+                    "-m",
+                    "cp",
+                    "-r",
+                    filestore_source,
+                    filestore_dest,
+                ]
+                subprocess.check_call(cmd)
+            except Exception as e:
+                msg = "Error syncing filestore to: {}, {}".format(dest, e)
+                raise click.ClickException(msg)
         else:
             shutil.copytree(filestore_source, filestore_dest)
 
@@ -84,7 +110,7 @@ def _copy_filestore(source, dest, copy_mode="default"):
 )
 @click.option(
     "--filestore-copy-mode",
-    type=click.Choice(["default", "rsync", "hardlink"]),
+    type=click.Choice(["default", "rsync", "hardlink", "gsutil"]),
     default="default",
     help="Mode for copying the filestore. Default uses python shutil copytree "
     "which copies everything. If the target filestore already exists and "
