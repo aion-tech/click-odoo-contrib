@@ -4,6 +4,7 @@
 
 import os
 import shutil
+import subprocess
 
 import click
 import click_odoo
@@ -14,7 +15,15 @@ from ._dbutils import db_exists, db_management_enabled, reset_config_parameters
 from .backupdb import DBDUMP_FILENAME, FILESTORE_DIRNAME, MANIFEST_FILENAME
 
 
-def _restore_from_folder(dbname, backup, copy=True, jobs=1, neutralize=False):
+def _restore_from_folder(
+    dbname,
+    backup,
+    copy=True,
+    jobs=1,
+    neutralize=False,
+    filestore_restore_mode="copy",
+    filestore_uid_gid=None,
+):
     manifest_file_path = os.path.join(backup, MANIFEST_FILENAME)
     dbdump_file_path = os.path.join(backup, DBDUMP_FILENAME)
     filestore_dir_path = os.path.join(backup, FILESTORE_DIRNAME)
@@ -39,7 +48,16 @@ def _restore_from_folder(dbname, backup, copy=True, jobs=1, neutralize=False):
             odoo.modules.neutralize.neutralize_database(env.cr)
         if os.path.exists(filestore_dir_path):
             filestore_dest = env["ir.attachment"]._filestore()
-            shutil.move(filestore_dir_path, filestore_dest)
+            if filestore_restore_mode == "copy":
+                shutil.copytree(filestore_dir_path, filestore_dest)
+            elif filestore_restore_mode == "move":
+                shutil.move(filestore_dir_path, filestore_dest)
+            if filestore_uid_gid:
+                uid, gid = filestore_uid_gid.split(":")
+                subprocess.run(
+                    ["chown", "-R", f"{uid}:{gid}", filestore_dest],
+                    check=True,
+                )
 
         if odoo.tools.config["unaccent"]:
             try:
@@ -101,6 +119,20 @@ def _restore_from_file(dbname, backup, copy=True, neutralize=False):
     type=int,
     default=1,
 )
+@click.option(
+    "--filestore-restore-mode",
+    type=click.Choice(
+        ["copy", "move"],
+        case_sensitive=False,
+    ),
+    help="Whether to copy or move the filestore directory.",
+    default="move",
+)
+@click.option(
+    "--filestore-uid-gid",
+    help="Set the uid:gid of the filestore directory after restore.",
+    type=str,
+)
 @click.argument("dbname", nargs=1)
 @click.argument(
     "source",
@@ -109,7 +141,17 @@ def _restore_from_file(dbname, backup, copy=True, neutralize=False):
         exists=True, file_okay=True, dir_okay=True, readable=True, resolve_path=True
     ),
 )
-def main(env, dbname, source, copy, force, neutralize, jobs):
+def main(
+    env,
+    dbname,
+    source,
+    copy,
+    force,
+    neutralize,
+    jobs,
+    filestore_restore_mode,
+    filestore_uid_gid,
+):
     """Restore an Odoo database backup.
 
     This script allows you to restore databses created by using the Odoo
@@ -132,4 +174,12 @@ def main(env, dbname, source, copy, force, neutralize, jobs):
     if os.path.isfile(source):
         _restore_from_file(dbname, source, copy, neutralize)
     else:
-        _restore_from_folder(dbname, source, copy, jobs, neutralize)
+        _restore_from_folder(
+            dbname,
+            source,
+            copy,
+            jobs,
+            neutralize,
+            filestore_restore_mode,
+            filestore_uid_gid,
+        )
