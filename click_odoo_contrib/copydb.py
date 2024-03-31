@@ -84,7 +84,7 @@ def _copy_filestore(source, dest, copy_mode="default"):
 )
 @click.option(
     "--filestore-copy-mode",
-    type=click.Choice(["default", "rsync", "hardlink"]),
+    type=click.Choice(["default", "rsync", "hardlink", "skip"]),
     default="default",
     help="Mode for copying the filestore. Default uses python shutil copytree "
     "which copies everything. If the target filestore already exists and "
@@ -128,6 +128,8 @@ def main(
             terminate_connections(source)
         _copy_db(cr, source, dest)
         reset_config_parameters(dest)
+    if filestore_copy_mode == "skip":
+        return
     _copy_filestore(source, dest, copy_mode=filestore_copy_mode)
 
 
